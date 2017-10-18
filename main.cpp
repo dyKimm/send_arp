@@ -12,7 +12,7 @@
 typedef struct ether{
 	uint8_t ether_dhost[6];
         uint8_t ether_shost[6];
-        uint8_t ether_type;
+        uint16_t ether_type;
 }ether;
 typedef struct arp{
         uint16_t arp_hrd;
@@ -41,10 +41,11 @@ void make_arp(arp* arp_pkt, uint8_t* sender_mac, uint8_t* target_mac, int op){
 		memcpy(arp_pkt->target_mac, target_mac, sizeof(uint8_t)*6);
 	}
 
-void make_ether(ether* ether_pkt, uint8_t* shost, uint8_t* dhost, arp arp_hdr){
+void make_ether(ether* ether_pkt, uint8_t* shost, uint8_t* dhost, arp arp_rq){
 	memcpy(ether_pkt->ether_shost, shost, sizeof(uint8_t)*6);
 	memcpy(ether_pkt->ether_dhost, dhost, sizeof(uint8_t)*6);
 	ether_pkt->ether_type=htons(0x0806);
+	memcpy(ether_pkt+1, &arp_rq, sizeof(struct arp));
 }
 
 int main(int argc, char *argv[]){
@@ -88,13 +89,13 @@ int main(int argc, char *argv[]){
 	sin=(struct sockaddr_in*)&ifr.ifr_addr;
 	printf("MY IP: %s\n", inet_ntop(AF_INET,&sin->sin_addr,s_ip,sizeof(s_ip)));
 	
-	printf("0\n");
+	//printf("0\n");
 	//Making sender arp
 	memset(target_mac, 0, sizeof(uint8_t)*6);
 	make_arp(arp_rq, my_mac, target_mac, 1);
 	inet_pton(AF_INET, s_ip, arp_rq->sender_ip);
 	inet_pton(AF_INET, argv[2], arp_rq->target_ip);
-	printf("1\n");
+	//printf("1\n");
 	//Making ethernet
 	struct ether s_ethpkt;
 	size=sizeof(struct ether)+sizeof(struct arp);
@@ -102,7 +103,7 @@ int main(int argc, char *argv[]){
 	make_ether(&s_ethpkt, target_mac, my_mac, *arp_rq);
 	uint8_t* s_pkt=(uint8_t*)malloc(size*sizeof(uint8_t));
 	memcpy(s_pkt, &s_ethpkt, size*sizeof(uint8_t));
-	printf("2\n");
+	//printf("2\n");
 	//Sending packet
 	
 	char errbuf[PCAP_ERRBUF_SIZE];
@@ -115,28 +116,32 @@ int main(int argc, char *argv[]){
 		printf("Sending packet fail");
 		return -1;
 	}	
-	printf("3\n");
+	//printf("3\n");
+	/*
+	int n;
+	for(n=0;n<100;n++){
 
+		printf("%02x\n",s_pkt[n]);
+	}*/
 	while(1){
 		const uint8_t* packet_r;
 		struct pcap_pkthdr* header;
 		struct ether* ether_r;
-		printf("5\n");
+		//printf("5\n");
 		int res = pcap_next_ex(handle, &header, &packet_r);
-		printf("6\n");
+		//printf("6\n");
 		if(res==0) continue;
-		printf("7\n");
+		//printf("7\n");
 		if(res==-1 || res==-2) break;
-		printf("4\n");
+		//printf("4\n");
 		ether_r=(struct ether*)(packet_r);
 		if(ether_r!=NULL&&ntohs(ether_r->ether_type)==0x0806){
 			memcpy(target_mac, ether_r->ether_shost, sizeof(uint8_t)*6);
-			printf("8\n");
+			///printf("8\n");
 			printf("TARGET MAC: %02x:%02x:%02x:%02x:%02x:%02x\n",target_mac[0],target_mac[1],target_mac[2],target_mac[3],target_mac[4],target_mac[5]);
 			break;
 		}
 		else{
-			printf("9\n");
 			continue;
 		}
 	}
